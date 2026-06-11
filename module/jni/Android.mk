@@ -1,10 +1,10 @@
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-LOCAL_MODULE := example
+LOCAL_MODULE := zygisk-pointer-fix
 LOCAL_SRC_FILES := example.cpp
 LOCAL_STATIC_LIBRARIES := libcxx
-LOCAL_LDLIBS := -llog
+LOCAL_LDLIBS := -llog -landroid
 include $(BUILD_SHARED_LIBRARY)
 
 include jni/libcxx/Android.mk

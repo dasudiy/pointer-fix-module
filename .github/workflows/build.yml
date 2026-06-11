@@ -24,11 +24,13 @@ jobs:
       run: |
         mkdir -p module_out/zygisk
         cp module.prop module_out/
-        # Check output directory of ndk-build. Usually it's in module/libs
-        if [ -d "module/libs" ]; then
-          cp -r module/libs/* module_out/zygisk/
-        fi
-        # Remove any unnecessary files
+        # Zygisk requires the .so be named after the ABI, e.g. arm64-v8a.so
+        for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+          lib="module/libs/$abi/libzygisk-pointer-fix.so"
+          if [ -f "$lib" ]; then
+            cp "$lib" "module_out/zygisk/${abi}.so"
+          fi
+        done
         cd module_out
         zip -r9 ../zygisk-pointer-fix-module.zip .
 
