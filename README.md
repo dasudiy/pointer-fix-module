@@ -1,52 +1,59 @@
-# Developing Zygisk Modules
+# Zygisk Pointer Capture Fix
 
-This repository hosts a template zygisk module for developers to start developing Zygisk modules. Before developing Zygisk modules, you should first check out the official documentation for [Magisk Modules](https://topjohnwu.github.io/Magisk/guides.html). Do not fork this repository for your new module; either manually clone this repository, or press the "Use this template" button in the GitHub UI.
+A Zygisk module to fix the Pointer Capture axis swap and direction inversion bug in Android 13 and above.
 
-This repository is archived because it is meant to be read-only; the project is not abandoned. For any issues, please report them to the main Magisk repository.
+## The Problem
 
-## API
+On certain Android devices, TV boxes, tablets, or custom ROMs running Android 13/14+, enabling **Pointer Capture** (used for relative mouse input in games or desktop emulation) causes the mouse coordinates to be rotated by 90 degrees. 
 
-- The canonical URL of the latest public Zygisk API is [module/jni/zygisk.hpp](https://github.com/topjohnwu/zygisk-module-sample/blob/master/module/jni/zygisk.hpp).
-- The header file is self documented; directly refer to the header source code for all Zygisk API details.
-- Magisk is committed to maintain backwards compatibility forever. That is, whenever there is an API update for Zygisk in a newer Magisk version, Magisk can always load Zygisk modules built for an older Zygisk API.
-- If you do not need the new features introduced in newer API versions, it's perfectly fine to stay on the older API version to maintain maximum compatibility.
+Specifically, the system transforms the relative mouse input `(x, y)` to `(-y, -x)`. This results in:
+* Moving the mouse horizontally moves the cursor vertically.
+* Axis directions are inverted (e.g., moving left moves the camera down/up).
 
-|                                        Zygisk API                                         | Minimal Magisk |                                      Diff                                      |
-| :---------------------------------------------------------------------------------------: | :------------: | :----------------------------------------------------------------------------: |
-| [v4](https://github.com/topjohnwu/zygisk-module-sample/blob/master/module/jni/zygisk.hpp) |     26000      | [v3..v4](https://github.com/topjohnwu/zygisk-module-sample/compare/v3..master) |
-|   [v3](https://github.com/topjohnwu/zygisk-module-sample/blob/v3/module/jni/zygisk.hpp)   |     24300      |   [v2..v3](https://github.com/topjohnwu/zygisk-module-sample/compare/v2..v3)   |
-|   [v2](https://github.com/topjohnwu/zygisk-module-sample/blob/v2/module/jni/zygisk.hpp)   |     24000      |                                      N/A                                       |
+This bug affects native games and remote streaming apps like **Moonlight**, **Steam Link**, **Geforce Now**, **Minecraft (MCPE)**, and **Termux-X11**, making them unplayable with a mouse.
 
-## Notes
+## How It Works
 
-- This repository can be opened with Android Studio.
-- Developing Zygisk modules requires a modern C++ compiler. Please use NDK r21 or higher.
-- All the C++ code is in the [module/jni](https://github.com/topjohnwu/zygisk-module-sample/tree/master/module/jni) folder.
-- DO NOT modify the default configurations in `Application.mk` unless you know what you are doing.
+This module injects into target applications using **Zygisk** and intercepts mouse events:
+1. **JNI Hooking**: Intercepts `MotionEvent` Java/Kotlin methods (`nativeGetAxisValue` and `nativeGetSource`) to fix standard Android apps.
+2. **PLT Hooking**: Intercepts native NDK APIs (`AMotionEvent_getAxisValue`, `AMotionEvent_getX`, `AMotionEvent_getY`) inside `libandroid.so` to fix pure-native C/C++ games and engines.
+3. **Axis Swap & Negation**: When an event with source `SOURCE_MOUSE_RELATIVE` (`0x00020004`) is detected, it swaps the X and Y axes and negates the values, restoring correct relative motion.
 
-## C++ STL
+## Requirements
 
-- The `APP_STL` variable in `Application.mk` is set to `none`. **DO NOT** use any C++ STL included in NDK.
-- If you'd like to use C++ STL, you **have to** use the `libcxx` included as a git submodule in this repository. Zygisk modules' code are injected into Zygote, and the included `libc++` is setup to be lightweight and fully self contained that prevents conflicts with the hosting program.
-- If you do not need STL, link to the system `libstdc++` so that you can at least call the `new` operator.
-- Both configurations are demonstrated in the example `Android.mk`.
+* **Root Access**: Magisk, KernelSU, or APatch.
+* **Zygisk**: 
+  * Enabled in Magisk settings, or
+  * Using **ZygiskNext** if you are on KernelSU or APatch.
 
-## Building
+## Installation
 
-- In the `module` folder, call [`ndk-build`](https://developer.android.com/ndk/guides/ndk-build) to compile your modules.
-- Your module libraries will be in `libs/<abi>/lib<module_name>.so`.
-- Copy the libraries into your module's `zygisk` folder, with the ABI as it's file name:
+1. Download the latest pre-compiled module zip from the [Releases](https://github.com/zygisk-pointer-fix/zygisk-pointer-fix/releases) or the GitHub Actions build artifact.
+2. Open your root manager application (e.g., Magisk, KernelSU, or APatch).
+3. Navigate to the **Modules** tab.
+4. Choose **Install from storage** and select the downloaded zip.
+5. Reboot your device.
 
-```
-module_id
-├── module.prop
-└── zygisk
-    ├── arm64-v8a.so
-    ├── armeabi-v7a.so
-    ├── x86.so
-    └── x86_64.so
-```
+## Building from Source
+
+### Prerequisites
+* Android NDK (r21 or higher recommended)
+* Git
+
+### Steps
+1. Clone the repository recursively to fetch the lightweight `libcxx` submodule:
+   ```bash
+   git clone --recursive https://github.com/zygisk-pointer-fix/zygisk-pointer-fix.git
+   cd zygisk-pointer-fix
+   ```
+2. Build the native libraries using `ndk-build`:
+   ```bash
+   export NDK_PROJECT_PATH=.
+   ndk-build -C module
+   ```
+3. The compiled `.so` files will be placed under `module/libs/`.
+4. Follow the layout in `.github/workflows/build.yml` to package them into a Magisk-compatible zip.
 
 ## License
 
-Although the main Magisk project is licensed under GPLv3, the Zygisk API and its headers are not. Every source code in this repository is released under 0BSD (a public domain equivalent license), so you don't have to worry about any licensing issues while developing Zygisk modules.
+This project is licensed under the [MIT License](LICENSE).
