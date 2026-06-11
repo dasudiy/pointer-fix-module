@@ -11,7 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Build native libraries with NDK
       run: |
@@ -31,7 +31,7 @@ jobs:
         zip -r9 ../zygisk-pointer-fix-module.zip .
 
     - name: Upload Module Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: zygisk-pointer-fix-module
         path: zygisk-pointer-fix-module.zip
