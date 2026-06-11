@@ -47,7 +47,11 @@ static jfloat hook_jni_getAxisValue(JNIEnv* env, jclass clazz, jlong nativePtr,
     if (orig_jni_getSource) {
         jint source = orig_jni_getSource(nativePtr);
         if (source == FIX_SOURCE_MOUSE_RELATIVE) {
-            axis = swap_axis(axis);
+            jint swapped = swap_axis(axis);
+            if (swapped != axis) {
+                // swap + negate to undo the 90° rotation bug
+                return -orig_jni_getAxisValue(env, clazz, nativePtr, swapped, pointerIndex, historyPos);
+            }
         }
     }
     return orig_jni_getAxisValue(env, clazz, nativePtr, axis, pointerIndex, historyPos);
@@ -67,20 +71,23 @@ static float (*orig_ndk_getX)(const AInputEvent*, size_t);
 static float (*orig_ndk_getY)(const AInputEvent*, size_t);
 
 static float hook_ndk_getAxisValue(const AInputEvent* event, int32_t axis, size_t idx) {
-    if (AInputEvent_getSource(event) == FIX_SOURCE_MOUSE_RELATIVE)
-        axis = swap_axis(axis);
+    if (AInputEvent_getSource(event) == FIX_SOURCE_MOUSE_RELATIVE) {
+        int32_t swapped = swap_axis(axis);
+        if (swapped != axis)
+            return -(orig_ndk_getAxisValue(event, swapped, idx));
+    }
     return orig_ndk_getAxisValue(event, axis, idx);
 }
 
 static float hook_ndk_getX(const AInputEvent* event, size_t idx) {
     if (AInputEvent_getSource(event) == FIX_SOURCE_MOUSE_RELATIVE)
-        return orig_ndk_getY ? orig_ndk_getY(event, idx) : 0;
+        return orig_ndk_getY ? -orig_ndk_getY(event, idx) : 0;
     return orig_ndk_getX ? orig_ndk_getX(event, idx) : 0;
 }
 
 static float hook_ndk_getY(const AInputEvent* event, size_t idx) {
     if (AInputEvent_getSource(event) == FIX_SOURCE_MOUSE_RELATIVE)
-        return orig_ndk_getX ? orig_ndk_getX(event, idx) : 0;
+        return orig_ndk_getX ? -orig_ndk_getX(event, idx) : 0;
     return orig_ndk_getY ? orig_ndk_getY(event, idx) : 0;
 }
 
