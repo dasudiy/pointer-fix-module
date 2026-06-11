@@ -35,24 +35,21 @@ jobs:
           fi
         done
 
-        # Magisk installer scripts (required for Magisk to recognize this as a valid module)
-        cat > module_out/META-INF/com/google/android/updater-script << 'EOF'
-        #MAGISK
-        EOF
+        # Magisk installer scripts
+        printf '#MAGISK\n' > module_out/META-INF/com/google/android/updater-script
 
         cat > module_out/META-INF/com/google/android/update-binary << 'EOF'
-        #!/sbin/sh
-        SKIPUNZIP=1
-        unzip -o "$ZIPFILE" 'zygisk/*' -d "$MODPATH" >&2
-        unzip -o "$ZIPFILE" 'module.prop' -d "$MODPATH" >&2
-        set_perm_recursive "$MODPATH" root root 0755 0644
-        EOF
-
-        cd module_out
-        zip -r9 ../zygisk-pointer-fix-module.zip .
+#!/sbin/sh
+SKIPUNZIP=1
+unzip -o "$ZIPFILE" 'zygisk/*' -d "$MODPATH" >&2
+unzip -o "$ZIPFILE" 'module.prop' -d "$MODPATH" >&2
+set_perm_recursive "$MODPATH" root root 0755 0644
+EOF
 
     - name: Upload Module Artifact
       uses: actions/upload-artifact@v4
       with:
         name: zygisk-pointer-fix-module
-        path: zygisk-pointer-fix-module.zip
+        # Upload directory — artifact download will be a zip of this dir
+        # which IS a valid Magisk module zip directly
+        path: module_out/
