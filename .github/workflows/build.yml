@@ -23,7 +23,10 @@ jobs:
     - name: Package Magisk Module
       run: |
         mkdir -p module_out/zygisk
+        mkdir -p module_out/META-INF/com/google/android
+
         cp module.prop module_out/
+
         # Zygisk requires the .so be named after the ABI, e.g. arm64-v8a.so
         for abi in arm64-v8a armeabi-v7a x86 x86_64; do
           lib="module/libs/$abi/libzygisk-pointer-fix.so"
@@ -31,6 +34,20 @@ jobs:
             cp "$lib" "module_out/zygisk/${abi}.so"
           fi
         done
+
+        # Magisk installer scripts (required for Magisk to recognize this as a valid module)
+        cat > module_out/META-INF/com/google/android/updater-script << 'EOF'
+        #MAGISK
+        EOF
+
+        cat > module_out/META-INF/com/google/android/update-binary << 'EOF'
+        #!/sbin/sh
+        SKIPUNZIP=1
+        unzip -o "$ZIPFILE" 'zygisk/*' -d "$MODPATH" >&2
+        unzip -o "$ZIPFILE" 'module.prop' -d "$MODPATH" >&2
+        set_perm_recursive "$MODPATH" root root 0755 0644
+        EOF
+
         cd module_out
         zip -r9 ../zygisk-pointer-fix-module.zip .
 
