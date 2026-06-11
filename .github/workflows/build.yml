@@ -1,0 +1,37 @@
+name: Build Zygisk Module
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Build native libraries with NDK
+      run: |
+        export NDK_PROJECT_PATH=.
+        $ANDROID_NDK_HOME/ndk-build -C module
+
+    - name: Package Magisk Module
+      run: |
+        mkdir -p module_out/zygisk
+        cp module.prop module_out/
+        # Check output directory of ndk-build. Usually it's in module/libs
+        if [ -d "module/libs" ]; then
+          cp -r module/libs/* module_out/zygisk/
+        fi
+        # Remove any unnecessary files
+        cd module_out
+        zip -r9 ../zygisk-pointer-fix-module.zip .
+
+    - name: Upload Module Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: zygisk-pointer-fix-module
+        path: zygisk-pointer-fix-module.zip

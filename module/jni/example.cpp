@@ -1,79 +1,86 @@
-/* Copyright 2022-2023 John "topjohnwu" Wu
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
- * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
- * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
- * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
- * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
- * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
- * PERFORMANCE OF THIS SOFTWARE.
- */
-
 #include <cstdlib>
 #include <unistd.h>
 #include <fcntl.h>
 #include <android/log.h>
+#include <android/input.h>
+#include <sys/sysmacros.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "zygisk.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
-using zygisk::ServerSpecializeArgs;
 
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "MyModule", __VA_ARGS__)
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PointerFix", __VA_ARGS__)
 
-class MyModule : public zygisk::ModuleBase {
+static float (*orig_AMotionEvent_getAxisValue)(const AInputEvent* motion_event, int32_t axis, size_t pointer_index);
+static float (*orig_AMotionEvent_getX)(const AInputEvent* motion_event, size_t pointer_index);
+static float (*orig_AMotionEvent_getY)(const AInputEvent* motion_event, size_t pointer_index);
+
+static float hook_AMotionEvent_getAxisValue(const AInputEvent* motion_event, int32_t axis, size_t pointer_index) {
+    int32_t source = AInputEvent_getSource(motion_event);
+    if (source == AINPUT_SOURCE_MOUSE_RELATIVE) {
+        if (axis == AMOTION_EVENT_AXIS_RELATIVE_X) {
+            return orig_AMotionEvent_getAxisValue ? orig_AMotionEvent_getAxisValue(motion_event, AMOTION_EVENT_AXIS_RELATIVE_Y, pointer_index) : 0;
+        } else if (axis == AMOTION_EVENT_AXIS_RELATIVE_Y) {
+            return orig_AMotionEvent_getAxisValue ? orig_AMotionEvent_getAxisValue(motion_event, AMOTION_EVENT_AXIS_RELATIVE_X, pointer_index) : 0;
+        }
+    }
+    return orig_AMotionEvent_getAxisValue ? orig_AMotionEvent_getAxisValue(motion_event, axis, pointer_index) : 0;
+}
+
+static float hook_AMotionEvent_getX(const AInputEvent* motion_event, size_t pointer_index) {
+    int32_t source = AInputEvent_getSource(motion_event);
+    if (source == AINPUT_SOURCE_MOUSE_RELATIVE) {
+        return orig_AMotionEvent_getY ? orig_AMotionEvent_getY(motion_event, pointer_index) : 0;
+    }
+    return orig_AMotionEvent_getX ? orig_AMotionEvent_getX(motion_event, pointer_index) : 0;
+}
+
+static float hook_AMotionEvent_getY(const AInputEvent* motion_event, size_t pointer_index) {
+    int32_t source = AInputEvent_getSource(motion_event);
+    if (source == AINPUT_SOURCE_MOUSE_RELATIVE) {
+        return orig_AMotionEvent_getX ? orig_AMotionEvent_getX(motion_event, pointer_index) : 0;
+    }
+    return orig_AMotionEvent_getY ? orig_AMotionEvent_getY(motion_event, pointer_index) : 0;
+}
+
+class PointerFixModule : public zygisk::ModuleBase {
 public:
     void onLoad(Api *api, JNIEnv *env) override {
         this->api = api;
-        this->env = env;
     }
 
-    void preAppSpecialize(AppSpecializeArgs *args) override {
-        // Use JNI to fetch our process name
-        const char *process = env->GetStringUTFChars(args->nice_name, nullptr);
-        preSpecialize(process);
-        env->ReleaseStringUTFChars(args->nice_name, process);
-    }
-
-    void preServerSpecialize(ServerSpecializeArgs *args) override {
-        preSpecialize("system_server");
+    void postAppSpecialize(const AppSpecializeArgs *args) override {
+        FILE *fp = fopen("/proc/self/maps", "r");
+        if (fp) {
+            char line[512];
+            while (fgets(line, sizeof(line), fp)) {
+                char perms[5];
+                unsigned int dev_major, dev_minor;
+                ino_t inode;
+                char path[256] = {0};
+                
+                if (sscanf(line, "%*s %4s %*s %x:%x %lu %255s", perms, &dev_major, &dev_minor, &inode, path) >= 5) {
+                    if (inode != 0 && perms[0] == 'r' && perms[2] == 'x') {
+                        dev_t dev = makedev(dev_major, dev_minor);
+                        api->pltHookRegister(dev, inode, "AMotionEvent_getAxisValue", (void*)hook_AMotionEvent_getAxisValue, (void**)&orig_AMotionEvent_getAxisValue);
+                        api->pltHookRegister(dev, inode, "AMotionEvent_getX", (void*)hook_AMotionEvent_getX, (void**)&orig_AMotionEvent_getX);
+                        api->pltHookRegister(dev, inode, "AMotionEvent_getY", (void*)hook_AMotionEvent_getY, (void**)&orig_AMotionEvent_getY);
+                    }
+                }
+            }
+            fclose(fp);
+            
+            if (api->pltHookCommit()) {
+                LOGD("Hooks committed successfully");
+            }
+        }
     }
 
 private:
     Api *api;
-    JNIEnv *env;
-
-    void preSpecialize(const char *process) {
-        // Demonstrate connecting to to companion process
-        // We ask the companion for a random number
-        unsigned r = 0;
-        int fd = api->connectCompanion();
-        read(fd, &r, sizeof(r));
-        close(fd);
-        LOGD("process=[%s], r=[%u]\n", process, r);
-
-        // Since we do not hook any functions, we should let Zygisk dlclose ourselves
-        api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
-    }
-
 };
 
-static int urandom = -1;
-
-static void companion_handler(int i) {
-    if (urandom < 0) {
-        urandom = open("/dev/urandom", O_RDONLY);
-    }
-    unsigned r;
-    read(urandom, &r, sizeof(r));
-    LOGD("companion r=[%u]\n", r);
-    write(i, &r, sizeof(r));
-}
-
-// Register our module class and the companion handler function
-REGISTER_ZYGISK_MODULE(MyModule)
-REGISTER_ZYGISK_COMPANION(companion_handler)
+REGISTER_ZYGISK_MODULE(PointerFixModule)
