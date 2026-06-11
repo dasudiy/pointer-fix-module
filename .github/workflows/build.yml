@@ -37,14 +37,7 @@ jobs:
 
         # Magisk installer scripts
         printf '#MAGISK\n' > module_out/META-INF/com/google/android/updater-script
-
-        cat > module_out/META-INF/com/google/android/update-binary << 'EOF'
-#!/sbin/sh
-SKIPUNZIP=1
-unzip -o "$ZIPFILE" 'zygisk/*' -d "$MODPATH" >&2
-unzip -o "$ZIPFILE" 'module.prop' -d "$MODPATH" >&2
-set_perm_recursive "$MODPATH" root root 0755 0644
-EOF
+        printf '#!/sbin/sh\nSKIPUNZIP=1\nunzip -o "$ZIPFILE" '"'"'zygisk/*'"'"' -d "$MODPATH" >&2\nunzip -o "$ZIPFILE" '"'"'module.prop'"'"' -d "$MODPATH" >&2\nset_perm_recursive "$MODPATH" root root 0755 0644\n' > module_out/META-INF/com/google/android/update-binary
 
     - name: Upload Module Artifact
       uses: actions/upload-artifact@v4
