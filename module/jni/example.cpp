@@ -30,6 +30,10 @@ static inline int32_t swap_axis(int32_t axis) {
     }
 }
 
+static inline bool is_x_axis(int32_t axis) {
+    return axis == FIX_AXIS_X || axis == FIX_AXIS_RELATIVE_X;
+}
+
 // ========================================
 // JNI hooks — covers all Java/Kotlin apps
 // ========================================
@@ -49,8 +53,8 @@ static jfloat hook_jni_getAxisValue(JNIEnv* env, jclass clazz, jlong nativePtr,
         if (source == FIX_SOURCE_MOUSE_RELATIVE) {
             jint swapped = swap_axis(axis);
             if (swapped != axis) {
-                // swap + negate to undo the 90° rotation bug
-                return -orig_jni_getAxisValue(env, clazz, nativePtr, swapped, pointerIndex, historyPos);
+                jfloat v = orig_jni_getAxisValue(env, clazz, nativePtr, swapped, pointerIndex, historyPos);
+                return is_x_axis(axis) ? -v : v;
             }
         }
     }
@@ -73,8 +77,10 @@ static float (*orig_ndk_getY)(const AInputEvent*, size_t);
 static float hook_ndk_getAxisValue(const AInputEvent* event, int32_t axis, size_t idx) {
     if (AInputEvent_getSource(event) == FIX_SOURCE_MOUSE_RELATIVE) {
         int32_t swapped = swap_axis(axis);
-        if (swapped != axis)
-            return -(orig_ndk_getAxisValue(event, swapped, idx));
+        if (swapped != axis) {
+            float v = orig_ndk_getAxisValue(event, swapped, idx);
+            return is_x_axis(axis) ? -v : v;
+        }
     }
     return orig_ndk_getAxisValue(event, axis, idx);
 }
@@ -87,7 +93,7 @@ static float hook_ndk_getX(const AInputEvent* event, size_t idx) {
 
 static float hook_ndk_getY(const AInputEvent* event, size_t idx) {
     if (AInputEvent_getSource(event) == FIX_SOURCE_MOUSE_RELATIVE)
-        return orig_ndk_getX ? -orig_ndk_getX(event, idx) : 0;
+        return orig_ndk_getX ? orig_ndk_getX(event, idx) : 0;
     return orig_ndk_getY ? orig_ndk_getY(event, idx) : 0;
 }
 
