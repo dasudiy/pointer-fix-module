@@ -1,6 +1,6 @@
 id=zygisk-pointer-fix
 name=Zygisk Pointer Capture Fix
-version=v1.0
+version=v1.0.0
 versionCode=1
 author=Antigravity
 description=Fixes the Android 13 Pointer Capture X/Y axis swap bug for native apps/games by hooking libandroid.so.
