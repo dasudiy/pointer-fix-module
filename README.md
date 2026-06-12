@@ -17,7 +17,30 @@ This bug affects native games and remote streaming apps like **Moonlight**, **St
 This module injects into target applications using **Zygisk** and intercepts mouse events:
 1. **JNI Hooking**: Intercepts `MotionEvent` Java/Kotlin methods (`nativeGetAxisValue` and `nativeGetSource`) to fix standard Android apps.
 2. **PLT Hooking**: Intercepts native NDK APIs (`AMotionEvent_getAxisValue`, `AMotionEvent_getX`, `AMotionEvent_getY`) inside `libandroid.so` to fix pure-native C/C++ games and engines.
-3. **Axis Swap & Negation**: When an event with source `SOURCE_MOUSE_RELATIVE` (`0x00020004`) is detected, it swaps the X and Y axes and negates the values, restoring correct relative motion.
+3. **Axis Swap & X Negation**: When an event with source `SOURCE_MOUSE_RELATIVE` (`0x00020004`) is detected, it swaps the X and Y axes and negates X only (`getX = -Y`, `getY = X`), restoring correct relative motion.
+
+## Tested Devices
+
+This module has only been tested on the following device (queried via `adb`):
+
+| Property | Value |
+|----------|-------|
+| Model | Lenovo TB-Q706F |
+| Product | LenovoTB-Q706F_EEA |
+| Device codename | Q706F |
+| Manufacturer | Lenovo |
+| Android version | 13 (API 33) |
+| Build ID | TKQ1.221013.002 |
+| Build display | `TB-Q706F_S530352_240807_ROW` |
+| Build incremental | `TB-Q706F_USR_S530352_2408071712_Q00050_ROW` |
+| Security patch | 2024-08-05 |
+| Build type | user / release-keys |
+| SoC platform | kona (Qualcomm) |
+| Kernel | 4.19.157-perf+ |
+| ABI | arm64-v8a |
+| Screen | 1600×2560 @ 240 dpi |
+
+Other devices may use a different axis rotation variant and may need a different fix (e.g. negate both axes, or negate Y only). Feedback and pull requests for additional devices are welcome.
 
 ## Requirements
 
